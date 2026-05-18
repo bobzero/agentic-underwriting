@@ -11,8 +11,19 @@ from app.services.agents.foundry_knowledge_agent_client import FoundryKnowledgeA
 
 logger = logging.getLogger(__name__)
 
-# Initialize client once
-_client = FoundryKnowledgeAgentClient()
+_client: FoundryKnowledgeAgentClient | None = None
+
+
+def _get_client() -> FoundryKnowledgeAgentClient | None:
+    global _client
+    if _client is not None:
+        return _client
+    try:
+        _client = FoundryKnowledgeAgentClient()
+        return _client
+    except Exception as exc:
+        logger.warning(f"Foundry knowledge agent is not configured: {exc}")
+        return None
 
 
 def get_knowledge_insight(question: str, case_id: str = None, top_k: int = 3) -> Optional[Dict]:
@@ -21,9 +32,13 @@ def get_knowledge_insight(question: str, case_id: str = None, top_k: int = 3) ->
         return None
 
     try:
+        client = _get_client()
+        if client is None:
+            return None
+
         logger.info(f"Knowledge query for case {case_id}: {question[:100]}")
         # The Foundry agent handles search+summary; top_k can be included in prompt if needed
-        result = _client.ask(question)
+        result = client.ask(question)
 
         # If the agent returns an empty answer, surface None to caller
         if not result or not result.answer:

@@ -16,9 +16,17 @@ from opentelemetry.sdk.resources import Resource
 # Load .env so APPLICATIONINSIGHTS_CONNECTION_STRING is available during import
 load_dotenv()
 
-# Configure exporter (uses APPLICATIONINSIGHTS_CONNECTION_STRING from env)
-# This call is best-effort; export failures won't crash the app.
-configure_azure_monitor()
+_connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+
+# Configure exporter only when telemetry is actually configured.
+# The app must continue to start without Application Insights.
+if _connection_string:
+    try:
+        configure_azure_monitor(connection_string=_connection_string)
+    except Exception:
+        logging.exception("Azure Monitor telemetry initialization failed; continuing without telemetry.")
+else:
+    logging.info("APPLICATIONINSIGHTS_CONNECTION_STRING not set; skipping Azure Monitor telemetry initialization.")
 
 # Define resource attributes (can also be set via OTEL_RESOURCE_ATTRIBUTES env)
 _resource = Resource.create({

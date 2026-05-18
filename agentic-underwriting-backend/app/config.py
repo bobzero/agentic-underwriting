@@ -1,4 +1,4 @@
-from pydantic import Field, field_validator
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     data_root: str = "data"
     
     # CORS settings
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: str = "http://localhost:3000"
     
     # Azure OpenAI settings
     azure_openai_endpoint: str | None = None
@@ -33,12 +33,5 @@ class Settings(BaseSettings):
     # Foundry OpenAI invocation for ID scope issues
     foundry_openai_scope: str = "https://ai.azure.com/.default"
     openai_api_version: str = "2025-05-15-preview"
-
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_origins(cls, value):
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
 
 settings = Settings()
