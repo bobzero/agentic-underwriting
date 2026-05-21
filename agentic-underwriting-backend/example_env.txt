@@ -1,0 +1,38 @@
+# Agentic Underwriting Backend - Sample Environment Variables
+# Copy values into your local .env (do not commit real secrets).
+
+# CORS
+CORS_ORIGINS=["http://localhost:3000"]
+
+# Azure AI Foundry (Fabric Agent)
+FOUNDRY_FABRIC_AGENT_ENDPOINT="https://<your-foundry-resource>.services.ai.azure.com/api/projects/<your-project-id>"
+FOUNDRY_FABRIC_AGENT_NAME="<your-fabric-agent-name>"
+
+# Foundry Fabric prompt cache (shared server-side file cache)
+FOUNDRY_FABRIC_PROMPT_CACHE_ENABLED="true"
+FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS="10368000"  # 120 days
+FOUNDRY_FABRIC_PROMPT_CACHE_DIR="data/foundry_prompt_cache"
+
+# Azure AI Foundry (Knowledge Agent)
+FOUNDRY_KNOWLEDGE_AGENT_ENDPOINT="https://<your-foundry-resource>.services.ai.azure.com/api/projects/<your-project-id>"
+FOUNDRY_KNOWLEDGE_AGENT_NAME="<your-knowledge-agent-name>"
+
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT="https://<your-azure-openai-resource>.openai.azure.com/"
+AZURE_OPENAI_DEPLOYMENT="<your-deployment-name>"
+OPENAI_API_VERSION="2025-05-15-preview"
+
+# Foundry/OpenAI auth scope
+FOUNDRY_OPENAI_SCOPE="https://ai.azure.com/.default"
+
+# Azure Maps
+AZURE_MAPS_BASE="https://atlas.microsoft.com"
+AZURE_MAPS_SCOPE="https://atlas.microsoft.com/.default"
+AZURE_MAPS_CLIENT_ID="<your-azure-maps-client-id>"
+
+# Telemetry
+APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=<key>;IngestionEndpoint=<endpoint>;LiveEndpoint=<endpoint>;ApplicationId=<id>"
+OTEL_SERVICE_NAME="agentic-underwriting-backend"
+
+# Feature flags
+ENABLE_KNOWLEDGE_INSIGHTS="false"
