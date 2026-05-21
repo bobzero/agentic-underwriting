@@ -14,6 +14,7 @@ ENVIRONMENT="${ENVIRONMENT:-demo-ron}"
 APP_NAME="${APP_NAME:-agentic-underwriting}"
 BACKEND_PATH="./agentic-underwriting-backend"
 FRONTEND_PATH="./agentic-underwriting-ui"
+SKIP_INFRA="false"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -33,14 +34,19 @@ while [[ $# -gt 0 ]]; do
             APP_NAME="$2"
             shift 2
             ;;
+        --skip-infra)
+            SKIP_INFRA="true"
+            shift
+            ;;
         --help|-h)
-            echo "Usage: ./deploy.sh [--resource-group <name>] [--location <azure-region>] [--environment <name>] [--app-name <name>]"
+            echo "Usage: ./deploy.sh [--resource-group <name>] [--location <azure-region>] [--environment <name>] [--app-name <name>] [--skip-infra]"
             echo ""
             echo "Defaults:"
             echo "  RESOURCE_GROUP=$RESOURCE_GROUP"
             echo "  LOCATION=$LOCATION"
             echo "  ENVIRONMENT=$ENVIRONMENT"
             echo "  APP_NAME=$APP_NAME"
+            echo "  SKIP_INFRA=$SKIP_INFRA"
             exit 0
             ;;
         *)
@@ -58,6 +64,7 @@ echo ""
 echo "Resource Group: $RESOURCE_GROUP"
 echo "Location: $LOCATION"
 echo "Environment: $ENVIRONMENT"
+echo "Skip Infra: $SKIP_INFRA"
 echo ""
 
 # Check prerequisites
@@ -85,25 +92,56 @@ else
 fi
 echo ""
 
-# Deploy infrastructure
-echo "[3/7] Deploying infrastructure with Bicep..."
-INFRA_OUTPUT=$(az deployment group create \
-    --resource-group "$RESOURCE_GROUP" \
-    --template-file ./infra/main.bicep \
-    --parameters location="$LOCATION" environment="$ENVIRONMENT" appName="$APP_NAME" \
-    --query properties.outputs \
-    -o json)
+# Resolve app names/URLs and deploy infrastructure when enabled
+BACKEND_APP="${APP_NAME}-backend-${ENVIRONMENT}"
+FRONTEND_APP="${APP_NAME}-frontend-${ENVIRONMENT}"
+BACKEND_URL="https://${BACKEND_APP}.azurewebsites.net"
+FRONTEND_URL="https://${FRONTEND_APP}.azurewebsites.net"
+APP_INSIGHTS_KEY=""
 
-BACKEND_APP=$(echo "$INFRA_OUTPUT" | jq -r '.backendAppServiceName.value')
-FRONTEND_APP=$(echo "$INFRA_OUTPUT" | jq -r '.frontendAppServiceName.value')
-BACKEND_URL=$(echo "$INFRA_OUTPUT" | jq -r '.backendAppServiceUrl.value')
-FRONTEND_URL=$(echo "$INFRA_OUTPUT" | jq -r '.frontendAppServiceUrl.value')
-APP_INSIGHTS_KEY=$(echo "$INFRA_OUTPUT" | jq -r '.appInsightsInstrumentationKey.value')
+if [[ "$SKIP_INFRA" == "true" ]]; then
+    echo "[3/7] Skipping infrastructure deployment (--skip-infra)"
+    echo "  Backend App Service: $BACKEND_APP"
+    echo "  Frontend App Service: $FRONTEND_APP"
+    echo ""
+else
+    echo "[3/7] Deploying infrastructure with Bicep..."
+    if INFRA_OUTPUT=$(az deployment group create \
+        --resource-group "$RESOURCE_GROUP" \
+        --template-file ./infra/main.bicep \
+        --parameters location="$LOCATION" environment="$ENVIRONMENT" appName="$APP_NAME" \
+        --query properties.outputs \
+        -o json 2> /tmp/agentic_underwriting_infra_err.log); then
 
-echo "✓ Infrastructure deployed successfully"
-echo "  Backend App Service: $BACKEND_APP"
-echo "  Frontend App Service: $FRONTEND_APP"
-echo ""
+        BACKEND_APP=$(echo "$INFRA_OUTPUT" | jq -r '.backendAppServiceName.value')
+        FRONTEND_APP=$(echo "$INFRA_OUTPUT" | jq -r '.frontendAppServiceName.value')
+        BACKEND_URL=$(echo "$INFRA_OUTPUT" | jq -r '.backendAppServiceUrl.value')
+        FRONTEND_URL=$(echo "$INFRA_OUTPUT" | jq -r '.frontendAppServiceUrl.value')
+        APP_INSIGHTS_KEY=$(echo "$INFRA_OUTPUT" | jq -r '.appInsightsInstrumentationKey.value')
+
+        echo "✓ Infrastructure deployed successfully"
+        echo "  Backend App Service: $BACKEND_APP"
+        echo "  Frontend App Service: $FRONTEND_APP"
+        echo ""
+    else
+        echo "⚠ Infrastructure deployment failed; continuing with existing App Services."
+        cat /tmp/agentic_underwriting_infra_err.log
+
+        if ! az webapp show --resource-group "$RESOURCE_GROUP" --name "$BACKEND_APP" > /dev/null 2>&1; then
+            echo "Error: Backend App Service not found: $BACKEND_APP"
+            exit 1
+        fi
+        if ! az webapp show --resource-group "$RESOURCE_GROUP" --name "$FRONTEND_APP" > /dev/null 2>&1; then
+            echo "Error: Frontend App Service not found: $FRONTEND_APP"
+            exit 1
+        fi
+
+        echo "✓ Using existing App Services"
+        echo "  Backend App Service: $BACKEND_APP"
+        echo "  Frontend App Service: $FRONTEND_APP"
+        echo ""
+    fi
+fi
 
 # Build and deploy backend
 echo "[4/7] Building and deploying backend..."
@@ -154,15 +192,21 @@ echo ""
 echo "[6/7] Configuring application settings..."
 
 # Backend configuration
+BACKEND_SETTINGS=(
+    "CORS_ORIGINS=https://${FRONTEND_URL#https://}"
+    "OTEL_SERVICE_NAME=agentic-underwriting-backend"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+    "PYTHON_VERSION=3.11"
+)
+
+if [[ -n "$APP_INSIGHTS_KEY" && "$APP_INSIGHTS_KEY" != "null" ]]; then
+    BACKEND_SETTINGS+=("APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=$APP_INSIGHTS_KEY")
+fi
+
 az webapp config appsettings set \
     --resource-group "$RESOURCE_GROUP" \
     --name "$BACKEND_APP" \
-    --settings \
-        CORS_ORIGINS="https://${FRONTEND_URL#https://}" \
-        APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=$APP_INSIGHTS_KEY" \
-        OTEL_SERVICE_NAME="agentic-underwriting-backend" \
-        SCM_DO_BUILD_DURING_DEPLOYMENT="true" \
-        PYTHON_VERSION="3.11" > /dev/null
+    --settings "${BACKEND_SETTINGS[@]}" > /dev/null
 
 # Frontend configuration
 az webapp config appsettings set \
