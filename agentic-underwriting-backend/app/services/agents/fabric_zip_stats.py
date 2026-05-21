@@ -83,7 +83,25 @@ def get_zip_stats(
             msg = f"[FABRIC WARNING] Function B returned no data: {raw_response.get('comments', '')} | Full response: {raw_response}"
             print(msg, flush=True)
             logger.warning(msg)
-            return None
+            now = datetime.now()
+            empty_stats = FabricZipClaimStats(
+                zip_code=zip_code,
+                years=years,
+                claim_frequency=0,
+                avg_loss=0.0,
+                cached_at=now.isoformat(),
+                cache_expires_at=(now + timedelta(hours=CACHE_TTL_HOURS)).isoformat(),
+                raw_response=raw_response,
+            )
+            set_cached_response(
+                "B",
+                case_id,
+                empty_stats.model_dump(),
+                ttl_hours=CACHE_TTL_HOURS,
+                zip_code=zip_code,
+                years=f"{years}y",
+            )
+            return empty_stats
         
         # Aggregate response data
         response_data = raw_response.get("response", [])

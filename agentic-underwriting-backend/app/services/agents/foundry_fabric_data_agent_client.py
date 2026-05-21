@@ -298,7 +298,7 @@ class FoundryFabricDataAgentClient:
         if not self.prompt_cache_enabled or self.prompt_cache_ttl_seconds <= 0:
             return
 
-        if response.status not in {"success", "no_data"}:
+        if response.status != "success":
             return
 
         cache_file = self._prompt_cache_file(question)
