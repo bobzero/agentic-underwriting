@@ -27,6 +27,8 @@ if not logger.handlers:
     logger.addHandler(_handler)
 logger.propagate = False
 
+CACHE_TTL_HOURS = 120
+
 
 def get_property_summary(
     case_id: str,
@@ -115,7 +117,7 @@ def get_property_summary(
             total_claims=total_claims,
             avg_paid_overall=avg_paid_overall,
             cached_at=now.isoformat(),
-            cache_expires_at=(now + timedelta(hours=72)).isoformat(),
+            cache_expires_at=(now + timedelta(hours=CACHE_TTL_HOURS)).isoformat(),
             raw_response=raw_response  # Keep for debugging
         )
         
@@ -124,7 +126,7 @@ def get_property_summary(
             "A", 
             case_id, 
             summary.model_dump(), 
-            ttl_hours=72,
+            ttl_hours=CACHE_TTL_HOURS,
             state=state,
             county=county_code
         )

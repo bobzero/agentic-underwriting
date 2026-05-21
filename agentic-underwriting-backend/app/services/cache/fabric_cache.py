@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path("data/fabric_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-DEFAULT_TTL_HOURS = 72  # 72-hour cache
+DEFAULT_TTL_HOURS = 120  # 5-day cache
 
 
 def _get_cache_key(function_id: str, case_id: str, **kwargs) -> str:

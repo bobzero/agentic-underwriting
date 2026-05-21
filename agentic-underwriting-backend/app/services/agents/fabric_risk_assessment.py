@@ -27,7 +27,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
 logger.propagate = False
 
-CACHE_TTL_HOURS = 72
+CACHE_TTL_HOURS = 120
 
 
 def get_risk_assessment(

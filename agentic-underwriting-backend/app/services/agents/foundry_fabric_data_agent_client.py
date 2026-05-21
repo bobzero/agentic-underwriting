@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 import re
 import time
+import hashlib
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from azure.identity import DefaultAzureCredential
@@ -99,6 +101,20 @@ class FoundryFabricDataAgentClient:
         )
         self.agent = self._resolve_agent(self.agent_name)
 
+        cache_enabled_value = (_read_env("FOUNDRY_FABRIC_PROMPT_CACHE_ENABLED", "true") or "true").strip().lower()
+        self.prompt_cache_enabled = cache_enabled_value in {"1", "true", "yes", "on"}
+
+        ttl_value = _read_env("FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS", "432000") or "432000"
+        try:
+            self.prompt_cache_ttl_seconds = max(0, int(ttl_value))
+        except ValueError:
+            self.prompt_cache_ttl_seconds = 432000
+
+        cache_dir_value = _read_env("FOUNDRY_FABRIC_PROMPT_CACHE_DIR", "data/foundry_prompt_cache") or "data/foundry_prompt_cache"
+        self.prompt_cache_dir = Path(cache_dir_value)
+        if self.prompt_cache_enabled:
+            self.prompt_cache_dir.mkdir(parents=True, exist_ok=True)
+
     def _resolve_agent(self, agent_name: str):
         try:
             agent = self.project_client.agents.get(agent_name=agent_name)
@@ -141,6 +157,10 @@ class FoundryFabricDataAgentClient:
         if not question or not question.strip():
             raise ValueError("Question cannot be empty")
 
+        cached = self._get_cached_prompt_response(question)
+        if cached is not None:
+            return cached
+
         try:
             client = self._get_openai_client()
             start = time.perf_counter()
@@ -181,15 +201,17 @@ class FoundryFabricDataAgentClient:
             try:
                 # Log success with basic call metadata
                 response_id = getattr(response, "id", None)
+                model = FabricAgentResponse(**parsed)
                 logger.info(
                     "Foundry agent call succeeded: agent=%s response_id=%s duration_ms=%s columns=%s rows=%s",
                     self.agent.name,
                     response_id,
                     elapsed_ms,
-                    parsed.get("columns"),
-                    parsed.get("rows"),
+                    model.columns,
+                    model.rows,
                 )
-                return FabricAgentResponse(**parsed)
+                self._set_cached_prompt_response(question, model)
+                return model
             except Exception as exc:
                 print(f"[FABRIC ERROR] Parsed JSON did not match schema: {exc}. Parsed: {str(parsed)[:500]}", flush=True)
                 logger.error(f"Parsed JSON did not match schema: {exc}. Parsed: {parsed}")
@@ -231,6 +253,69 @@ class FoundryFabricDataAgentClient:
             timeout=timeout,
         )
         return response.model_dump() if hasattr(response, "model_dump") else dict(response)
+
+    def _prompt_cache_key(self, question: str) -> str:
+        normalized = question.strip()
+        raw_key = f"{self.endpoint}|{self.agent.name}|{normalized}"
+        return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+    def _prompt_cache_file(self, question: str) -> Path:
+        return self.prompt_cache_dir / f"{self._prompt_cache_key(question)}.json"
+
+    def _get_cached_prompt_response(self, question: str) -> Optional[FabricAgentResponse]:
+        if not self.prompt_cache_enabled or self.prompt_cache_ttl_seconds <= 0:
+            return None
+
+        cache_file = self._prompt_cache_file(question)
+        if not cache_file.exists():
+            return None
+
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+            expires_at_raw = payload.get("expires_at")
+            if not isinstance(expires_at_raw, str):
+                return None
+
+            expires_at = datetime.fromisoformat(expires_at_raw)
+            if datetime.now(timezone.utc) > expires_at:
+                cache_file.unlink(missing_ok=True)
+                return None
+
+            response_data = payload.get("response_data")
+            if not isinstance(response_data, dict):
+                return None
+
+            model = FabricAgentResponse(**response_data)
+            logger.info("Foundry prompt cache hit: agent=%s key=%s", self.agent.name, cache_file.stem[:12])
+            return model
+        except Exception as exc:
+            logger.warning("Foundry prompt cache read failed: %s", exc)
+            return None
+
+    def _set_cached_prompt_response(self, question: str, response: FabricAgentResponse) -> None:
+        if not self.prompt_cache_enabled or self.prompt_cache_ttl_seconds <= 0:
+            return
+
+        if response.status not in {"success", "no_data"}:
+            return
+
+        cache_file = self._prompt_cache_file(question)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=self.prompt_cache_ttl_seconds)
+        payload = {
+            "cached_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "response_data": response.model_dump(),
+        }
+
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            logger.info("Foundry prompt cache write: agent=%s key=%s ttl_s=%s", self.agent.name, cache_file.stem[:12], self.prompt_cache_ttl_seconds)
+        except Exception as exc:
+            logger.warning("Foundry prompt cache write failed: %s", exc)
 
 
 def _extract_request_id(message: str) -> Optional[str]:
