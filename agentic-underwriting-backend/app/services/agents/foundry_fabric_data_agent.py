@@ -6,6 +6,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict
+from concurrent.futures import ThreadPoolExecutor
 
 from app.services.agents.foundry_fabric_data_agent_client import (
     FoundryFabricDataAgentClient,
@@ -126,8 +127,12 @@ def risk_assessment_severity_and_large_losses(county_code: str = "26163", min_lo
         f"list last 10 claims over {min_loss} for county code {county_code};"
     )
 
-    severity_result = client.ask_structured(prompt_severity)
-    large_losses_result = client.ask_structured(prompt_large_losses)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        severity_future = executor.submit(client.ask_structured, prompt_severity)
+        large_losses_future = executor.submit(client.ask_structured, prompt_large_losses)
+        severity_result = severity_future.result()
+        large_losses_result = large_losses_future.result()
+
     return {
         "severity": severity_result.model_dump(),
         "large_losses": large_losses_result.model_dump(),
