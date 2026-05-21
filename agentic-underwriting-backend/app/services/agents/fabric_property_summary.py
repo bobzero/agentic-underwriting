@@ -82,7 +82,25 @@ def get_property_summary(
             msg = f"[FABRIC WARNING] Function A returned no data: {raw_response.get('comments', '')} | Full response: {raw_response}"
             print(msg, flush=True)
             logger.warning(msg)
-            return None
+            now = datetime.utcnow()
+            empty_summary = FabricPropertySummary(
+                rows=[],
+                total_counties=0,
+                total_claims=0,
+                avg_paid_overall=0.0,
+                cached_at=now.isoformat(),
+                cache_expires_at=(now + timedelta(hours=CACHE_TTL_HOURS)).isoformat(),
+                raw_response=raw_response,
+            )
+            set_cached_response(
+                "A",
+                case_id,
+                empty_summary.model_dump(),
+                ttl_hours=CACHE_TTL_HOURS,
+                state=state,
+                county=county_code,
+            )
+            return empty_summary
         
         # Parse response array into typed rows
         response_data = raw_response.get("response", [])
