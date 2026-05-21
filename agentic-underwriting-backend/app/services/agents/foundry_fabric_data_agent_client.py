@@ -104,11 +104,11 @@ class FoundryFabricDataAgentClient:
         cache_enabled_value = (_read_env("FOUNDRY_FABRIC_PROMPT_CACHE_ENABLED", "true") or "true").strip().lower()
         self.prompt_cache_enabled = cache_enabled_value in {"1", "true", "yes", "on"}
 
-        ttl_value = _read_env("FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS", "432000") or "432000"
+        ttl_value = _read_env("FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS", "10368000") or "10368000"
         try:
             self.prompt_cache_ttl_seconds = max(0, int(ttl_value))
         except ValueError:
-            self.prompt_cache_ttl_seconds = 432000
+            self.prompt_cache_ttl_seconds = 10368000
 
         cache_dir_value = _read_env("FOUNDRY_FABRIC_PROMPT_CACHE_DIR", "data/foundry_prompt_cache") or "data/foundry_prompt_cache"
         self.prompt_cache_dir = Path(cache_dir_value)

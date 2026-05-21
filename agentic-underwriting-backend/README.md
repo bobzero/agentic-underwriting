@@ -32,7 +32,7 @@ Common environment variables (placeholders):
    - `FOUNDRY_FABRIC_AGENT_ENDPOINT` = `https://<foundry-endpoint>`
    - `FOUNDRY_FABRIC_AGENT_NAME` = `<agent-name>`
    - `FOUNDRY_FABRIC_PROMPT_CACHE_ENABLED` = `true|false` (default `true`)
-   - `FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS` = `<seconds>` (default `432000`)
+   - `FOUNDRY_FABRIC_PROMPT_CACHE_TTL_SECONDS` = `<seconds>` (default `10368000`)
    - `FOUNDRY_FABRIC_PROMPT_CACHE_DIR` = `<cache-path>` (default `data/foundry_prompt_cache`)
    - `FOUNDRY_KNOWLEDGE_AGENT_ENDPOINT` = `https://<foundry-endpoint>`
    - `FOUNDRY_KNOWLEDGE_AGENT_NAME` = `<agent-name>`
