@@ -156,3 +156,16 @@ class CopilotChatResponse(BaseModel):
     suggested_actions: Optional[List[str]] = None
     decision: Optional[DecisionOutput] = None
     knowledgeCitations: Optional[List[KnowledgeCitation]] = None
+
+
+class CaseQueueItem(BaseModel):
+    id: str
+    name: str
+    status: Literal["Pending", "Needs Review", "AI Approved"]
+    submissionDate: str
+    riskFlags: List[str] = Field(default_factory=list)
+
+
+class CaseQueueResponse(BaseModel):
+    submissionQueue: List[CaseQueueItem]
+    aiApprovedQueue: List[CaseQueueItem]

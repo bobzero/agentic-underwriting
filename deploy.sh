@@ -6,12 +6,50 @@
 set -e
 
 # Configuration
-RESOURCE_GROUP="rg-agentic-underwriting"
-LOCATION="eastus"
-ENVIRONMENT="demo"
-APP_NAME="agentic-underwriting"
+# You can override these via environment variables or CLI flags:
+#   --resource-group, --location, --environment, --app-name
+RESOURCE_GROUP="${RESOURCE_GROUP:-rg-agentic-underwriting}"
+LOCATION="${LOCATION:-northcentralus}"
+ENVIRONMENT="${ENVIRONMENT:-demo-ron}"
+APP_NAME="${APP_NAME:-agentic-underwriting}"
 BACKEND_PATH="./agentic-underwriting-backend"
 FRONTEND_PATH="./agentic-underwriting-ui"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --resource-group)
+            RESOURCE_GROUP="$2"
+            shift 2
+            ;;
+        --location)
+            LOCATION="$2"
+            shift 2
+            ;;
+        --environment)
+            ENVIRONMENT="$2"
+            shift 2
+            ;;
+        --app-name)
+            APP_NAME="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: ./deploy.sh [--resource-group <name>] [--location <azure-region>] [--environment <name>] [--app-name <name>]"
+            echo ""
+            echo "Defaults:"
+            echo "  RESOURCE_GROUP=$RESOURCE_GROUP"
+            echo "  LOCATION=$LOCATION"
+            echo "  ENVIRONMENT=$ENVIRONMENT"
+            echo "  APP_NAME=$APP_NAME"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Run './deploy.sh --help' for usage."
+            exit 1
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "Agentic Underwriting Deployment Script"
@@ -131,6 +169,7 @@ az webapp config appsettings set \
     --resource-group "$RESOURCE_GROUP" \
     --name "$FRONTEND_APP" \
     --settings \
+        NEXT_PUBLIC_API_BASE_URL="$BACKEND_URL" \
         NEXT_PUBLIC_API_URL="$BACKEND_URL" > /dev/null
 
 echo "✓ Application settings configured"

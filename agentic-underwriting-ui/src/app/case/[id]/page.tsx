@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import CaseSummary from "@/components/CaseSummary";
@@ -8,7 +8,6 @@ import ActionsBar from "@/components/ActionsBar";
 import CopilotDrawer from "@/components/CopilotDrawer";
 import AiApprovedCaseDetails from "@/components/AiApprovedCaseDetails";
 import KnowledgeInsightsCard from "@/components/KnowledgeInsightsCard";
-import { aiApprovedQueue, submissionQueue } from "@/lib/mockData";
 import { Button } from "@/components/ui/button";
 import type { CaseViewModel } from "@/lib/apiTypes";
 import { downloadAiAudit, fetchCaseView, rerunAiDecision, sendCopilotMessage } from "@/lib/api";
@@ -21,11 +20,6 @@ export default function CaseDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const caseId = params.id ?? "C-123";
-
-  const currentCase = useMemo(() => {
-    const combined = [...submissionQueue, ...aiApprovedQueue];
-    return combined.find((c) => c.id === caseId);
-  }, [caseId]);
 
   const [caseView, setCaseView] = useState<CaseViewModel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +75,7 @@ export default function CaseDetailPage() {
 
   const caseMessages = messagesByCase[caseId] ?? [];
   const propertyProfile = caseView?.tabs?.property_profile as { address?: string } | undefined;
-  const caseName = currentCase?.name ?? caseView?.title ?? propertyProfile?.address ?? caseId;
+  const caseName = caseView?.title ?? propertyProfile?.address ?? `Case ${caseId}`;
 
   const sendMessage = async () => {
     const trimmed = input.trim();

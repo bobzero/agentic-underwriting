@@ -4,7 +4,7 @@ Handles caching, parsing, and error handling.
 """
 
 import logging
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime, timedelta
 
 from app.services.agents.foundry_fabric_data_agent import property_support_summary
@@ -54,7 +54,11 @@ def get_property_summary(
         cached = get_cached_response("A", case_id, state=state, county=county_code)
         if cached:
             try:
-                return FabricPropertySummary(**cached["response_data"])
+                response_data = cached.get("response_data", cached)
+                if _is_fallback_payload(response_data):
+                    logger.info("Ignoring cached fallback payload for Function A")
+                else:
+                    return FabricPropertySummary(**response_data)
             except Exception as e:
                 logger.warning(f"Invalid cached data, re-fetching: {e}")
     
@@ -138,4 +142,11 @@ def refresh_property_summary(case_id: str, state: str, county_code: str) -> Opti
     """Force refresh (invalidate cache and re-fetch)"""
     invalidate_cache("A", case_id, state=state, county=county_code)
     return get_property_summary(case_id, state, county_code, force_refresh=True)
+
+
+def _is_fallback_payload(response_data: dict) -> bool:
+    if not isinstance(response_data, dict):
+        return False
+    raw_response = response_data.get("raw_response")
+    return isinstance(raw_response, dict) and bool(raw_response.get("fallback"))
 

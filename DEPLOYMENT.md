@@ -39,7 +39,19 @@ chmod +x deploy.sh
 
 # Run the deployment
 ./deploy.sh
+
+# Show available overrides and current defaults
+./deploy.sh --help
+
+# Example override
+./deploy.sh --location eastus --environment demo
 ```
+
+Current script defaults:
+1. Resource group: `rg-agentic-underwriting`
+2. Location: `northcentralus`
+3. Environment: `demo-ron`
+4. App name: `agentic-underwriting`
 
 The script will:
 1. Validate prerequisites
@@ -50,6 +62,11 @@ The script will:
 6. Configure application settings
 7. Display deployment summary
 
+Important configuration note:
+1. Updating `agentic-underwriting-backend/.env` in the repository does not automatically update Azure App Service settings.
+2. Runtime config for deployed apps comes from App Service Application Settings (or Key Vault references).
+3. You can apply new settings without a full redeploy by running `az webapp config appsettings set`.
+
 ### Option 2: Manual Deployment
 
 #### Step 1: Deploy Infrastructure
@@ -58,7 +75,7 @@ The script will:
 az deployment group create \
   --resource-group rg-agentic-underwriting \
   --template-file infra/main.bicep \
-  --parameters location=eastus environment=demo appName=agentic-underwriting
+  --parameters location=northcentralus environment=demo-ron appName=agentic-underwriting
 ```
 
 #### Step 2: Deploy Backend
@@ -70,7 +87,7 @@ cd ..
 
 az webapp deployment source config-zip \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --src backend.zip
 ```
 
@@ -85,7 +102,7 @@ cd ..
 
 az webapp deployment source config-zip \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-frontend-demo \
+  --name agentic-underwriting-frontend-demo-ron \
   --src frontend.zip
 ```
 
@@ -96,7 +113,7 @@ az webapp deployment source config-zip \
 ```bash
 az webapp config appsettings set \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --settings \
     AZURE_OPENAI_ENDPOINT="https://<your-resource>.openai.azure.com/" \
     AZURE_OPENAI_DEPLOYMENT="<deployment-name>"
@@ -116,7 +133,7 @@ Then reference in App Service:
 ```bash
 az webapp config appsettings set \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --settings "AZURE_OPENAI_API_KEY=@Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/AZURE-OPENAI-API-KEY/)"
 ```
 
@@ -127,7 +144,7 @@ Update CORS settings if frontend and backend are at different URLs:
 ```bash
 az webapp config appsettings set \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --settings \
     "CORS_ORIGINS=https://<your-frontend-url>"
 ```
@@ -137,7 +154,7 @@ az webapp config appsettings set \
 ```bash
 az webapp config appsettings set \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --settings \
     "APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>" \
     "OTEL_SERVICE_NAME=agentic-underwriting-backend"
@@ -157,7 +174,7 @@ Reference in App Service:
 ```bash
 az webapp config appsettings set \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo \
+  --name agentic-underwriting-backend-demo-ron \
   --settings \
     "FOUNDRY_FABRIC_AGENT_ENDPOINT=@Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/FOUNDRY-FABRIC-AGENT-ENDPOINT/)" \
     "FOUNDRY_FABRIC_AGENT_NAME=@Microsoft.KeyVault(SecretUri=https://<vault-name>.vault.azure.net/secrets/FOUNDRY-FABRIC-AGENT-NAME/)"
@@ -168,7 +185,7 @@ az webapp config appsettings set \
 After deployment, access your application at the Frontend URL shown in the deployment output:
 
 ```
-https://agentic-underwriting-frontend-demo.azurewebsites.net
+https://agentic-underwriting-frontend-demo-ron.azurewebsites.net
 ```
 
 ## Scaling Considerations
@@ -178,7 +195,7 @@ https://agentic-underwriting-frontend-demo.azurewebsites.net
 ```bash
 az appservice plan update \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-plan-demo \
+  --name agentic-underwriting-backend-plan-demo-ron \
   --sku S2
 ```
 
@@ -187,7 +204,7 @@ az appservice plan update \
 ```bash
 az appservice plan update \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-plan-demo \
+  --name agentic-underwriting-backend-plan-demo-ron \
   --number-of-workers 2
 ```
 
@@ -198,7 +215,7 @@ az appservice plan update \
 ```bash
 az webapp log tail \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo
+  --name agentic-underwriting-backend-demo-ron
 ```
 
 ### View Metrics in Application Insights
@@ -207,14 +224,14 @@ az webapp log tail \
 # Get Application Insights resource name
 az monitor app-insights show \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-insights-demo
+  --name agentic-underwriting-insights-demo-ron
 ```
 
 Then view in Azure Portal or use:
 
 ```bash
 az monitor metrics list-definitions \
-  --resource /subscriptions/<subscription-id>/resourceGroups/rg-agentic-underwriting/providers/microsoft.insights/components/agentic-underwriting-insights-demo
+  --resource /subscriptions/<subscription-id>/resourceGroups/rg-agentic-underwriting/providers/microsoft.insights/components/agentic-underwriting-insights-demo-ron
 ```
 
 ## Troubleshooting
@@ -225,14 +242,14 @@ az monitor metrics list-definitions \
    ```bash
    az webapp deployment log show \
      --resource-group rg-agentic-underwriting \
-     --name agentic-underwriting-backend-demo
+     --name agentic-underwriting-backend-demo-ron
    ```
 
 2. Check App Service logs:
    ```bash
    az webapp log tail \
      --resource-group rg-agentic-underwriting \
-     --name agentic-underwriting-backend-demo
+     --name agentic-underwriting-backend-demo-ron
    ```
 
 ### CORS Errors
@@ -242,7 +259,7 @@ Verify CORS_ORIGINS environment variable matches frontend URL:
 ```bash
 az webapp config appsettings list \
   --resource-group rg-agentic-underwriting \
-  --name agentic-underwriting-backend-demo | grep CORS_ORIGINS
+  --name agentic-underwriting-backend-demo-ron | grep CORS_ORIGINS
 ```
 
 ### Storage Access Issues

@@ -5,6 +5,7 @@ Returns the same structured schema as the legacy Fabric client.
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -14,13 +15,11 @@ from azure.ai.projects import AIProjectClient
 from openai import AzureOpenAI
 
 try:
-    from dotenv import load_dotenv
+    from dotenv import dotenv_values, load_dotenv
     load_dotenv()
 except Exception:
+    dotenv_values = None
     pass
-
-FOUNDRY_OPENAI_SCOPE = os.getenv("FOUNDRY_OPENAI_SCOPE", "https://ai.azure.com/.default")
-OPENAI_API_VERSION = os.getenv("OPENAI_API_VERSION")
 
 logger = logging.getLogger(__name__)
 # Ensure INFO-level logs surface for this client
@@ -39,6 +38,23 @@ if not logger.handlers:
 
 # Prevent double logging; we directly attach handlers
 logger.propagate = False
+_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+
+
+def _read_env(name: str, default: str | None = None) -> str | None:
+    """Prefer backend .env value, then process env, then default."""
+    if dotenv_values is not None:
+        try:
+            value = dotenv_values(_ENV_PATH).get(name)
+            if value:
+                return value
+        except Exception:
+            pass
+
+    value = os.getenv(name)
+    if value:
+        return value
+    return default
 
 
 class FabricAgentResponse(BaseModel):
@@ -100,16 +116,25 @@ class FoundryFabricDataAgentClient:
     #         raise
 
     def _get_openai_client(self):
-    # Manual client with explicit token scope to satisfy Foundry audience checks
+        openai_api_version = _read_env("OPENAI_API_VERSION")
+
+        # Prefer the SDK-provided OpenAI client for project-scoped endpoints.
+        # If this fails (older environment/package mismatch), fall back to explicit token flow.
+        try:
+            return self.project_client.get_openai_client(api_version=openai_api_version)
+        except Exception as exc:
+            logger.warning(f"Falling back to manual AzureOpenAI client creation: {exc}")
+
+        foundry_openai_scope = _read_env("FOUNDRY_OPENAI_SCOPE", "https://ai.azure.com/.default")
+
         def token_provider() -> str:
-            return self.credential.get_token(FOUNDRY_OPENAI_SCOPE).token
+            return self.credential.get_token(foundry_openai_scope).token
 
         base_url = self.endpoint.rstrip("/") + "/openai"
         return AzureOpenAI(
             azure_ad_token_provider=token_provider,
             base_url=base_url,
-            api_version=OPENAI_API_VERSION,
-            # api_version can be pinned if needed, e.g., api_version="2025-05-15-preview"
+            api_version=openai_api_version,
         )
 
     def ask_structured(self, question: str, timeout: int = 120) -> FabricAgentResponse:
@@ -178,10 +203,17 @@ class FoundryFabricDataAgentClient:
                 )
 
         except Exception as exc:
-            request_id = _extract_request_id(str(exc))
+            details = _format_exception_details(exc)
+            request_id = _extract_request_id(details)
             log_suffix = f" request_id={request_id}" if request_id else ""
-            print(f"[FABRIC ERROR] Foundry agent call failed:{log_suffix} | {exc}", flush=True)
-            logger.error(f"Foundry agent call failed:{log_suffix} | {exc}")
+            print(
+                f"[FABRIC ERROR] Foundry agent call failed:{log_suffix} endpoint={self.endpoint} "
+                f"agent={self.agent.name} | {details}",
+                flush=True,
+            )
+            logger.error(
+                f"Foundry agent call failed:{log_suffix} endpoint={self.endpoint} agent={self.agent.name} | {details}"
+            )
             return FabricAgentResponse(
                 status="error",
                 columns=0,
@@ -207,3 +239,28 @@ def _extract_request_id(message: str) -> Optional[str]:
         return None
     match = re.search(r'"requestId"\s*:\s*"([^"]+)"', message)
     return match.group(1) if match else None
+
+
+def _format_exception_details(exc: Exception) -> str:
+    """Best-effort extraction of full error details from SDK/OpenAI exceptions."""
+    parts: List[str] = [str(exc)]
+
+    code = getattr(exc, "code", None)
+    if code:
+        parts.append(f"code={code}")
+
+    status_code = getattr(exc, "status_code", None)
+    if status_code:
+        parts.append(f"status_code={status_code}")
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        req_id = getattr(response, "request_id", None) or getattr(response, "x_ms_request_id", None)
+        if req_id:
+            parts.append(f"response_request_id={req_id}")
+
+    body = getattr(exc, "body", None)
+    if body:
+        parts.append(f"body={body}")
+
+    return " | ".join(parts)

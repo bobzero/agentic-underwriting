@@ -143,7 +143,7 @@ async def get_llm_response_async(prompt: str) -> dict:
     ))
     chat.add_message(ChatMessageContent(role=AuthorRole.USER, content=prompt))
 
-    settings = AzureChatPromptExecutionSettings(temperature=0.0, max_tokens=800, top_p=1.0)
+    settings = AzureChatPromptExecutionSettings(temperature=0.0, top_p=1.0)
 
     try:
         results = await service.get_chat_message_contents(chat_history=chat, settings=settings)
@@ -181,7 +181,7 @@ async def get_chat_completion_async(messages: list[tuple[str, str]]) -> str:
     service = _get_service()
 
     chat = _build_chat_history(messages)
-    settings = AzureChatPromptExecutionSettings(temperature=0.3, max_tokens=1000, top_p=1.0)
+    settings = AzureChatPromptExecutionSettings(temperature=0.3, top_p=1.0)
 
     try:
         results = await service.get_chat_message_contents(chat_history=chat, settings=settings)

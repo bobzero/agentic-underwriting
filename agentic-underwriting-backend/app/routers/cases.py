@@ -3,11 +3,25 @@ from copy import deepcopy
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import AiDecision, CaseContext, CaseViewModel
-from app.services.data_access.local_repo import get_case, get_ai_audit
+from app.models.schemas import AiDecision, CaseContext, CaseQueueResponse, CaseViewModel
+from app.services.data_access.local_repo import get_case, get_ai_audit, list_case_queue_items
 from app.services.conductor import build_case_view
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
+
+
+@router.get("", response_model=CaseQueueResponse)
+def list_case_queues():
+    queue_items = list_case_queue_items()
+    submission = [
+        item for item in queue_items if item.get("status") in {"Pending", "Needs Review"}
+    ]
+    ai_approved = [item for item in queue_items if item.get("status") == "AI Approved"]
+
+    submission.sort(key=lambda item: item.get("submissionDate", ""), reverse=True)
+    ai_approved.sort(key=lambda item: item.get("submissionDate", ""), reverse=True)
+
+    return CaseQueueResponse(submissionQueue=submission, aiApprovedQueue=ai_approved)
 
 @router.get("/{case_id}/view", response_model=CaseViewModel)
 def get_case_view(case_id: str):

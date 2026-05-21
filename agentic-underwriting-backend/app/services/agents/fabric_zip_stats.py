@@ -57,7 +57,10 @@ def get_zip_stats(
             logger.info(f"Cache hit for Function B: {case_id}")
             # Extract response_data from cache payload
             response_data = cached.get("response_data", cached)
-            return FabricZipClaimStats(**response_data)
+            if _is_fallback_payload(response_data):
+                logger.info("Ignoring cached fallback payload for Function B")
+            else:
+                return FabricZipClaimStats(**response_data)
     
     # Fetch from Fabric
     logger.info(f"Fetching Function B from Fabric: zip={zip_code}, years={years}")
@@ -131,4 +134,11 @@ def refresh_zip_stats(case_id: str, zip_code: str, years: int = 10) -> Optional[
     """Force refresh ZIP stats by invalidating cache and fetching fresh data"""
     invalidate_cache("B", case_id, zip_code=zip_code, years=f"{years}y")
     return get_zip_stats(case_id, zip_code, years, force_refresh=True)
+
+
+def _is_fallback_payload(response_data: dict) -> bool:
+    if not isinstance(response_data, dict):
+        return False
+    raw_response = response_data.get("raw_response")
+    return isinstance(raw_response, dict) and bool(raw_response.get("fallback"))
 

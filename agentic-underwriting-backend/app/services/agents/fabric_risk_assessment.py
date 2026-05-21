@@ -55,8 +55,11 @@ def get_risk_assessment(
         if cached:
             logger.info(f"Cache hit for Function C: {case_id}")
             response_data = cached.get("response_data", cached)
-            upgraded = _upgrade_cached_payload(response_data)
-            return FabricRiskAssessment(**upgraded)
+            if _is_fallback_payload(response_data):
+                logger.info("Ignoring cached fallback payload for Function C")
+            else:
+                upgraded = _upgrade_cached_payload(response_data)
+                return FabricRiskAssessment(**upgraded)
     
     # Fetch from Fabric
     logger.info(f"Fetching Function C from Fabric: county={county_code}, min_loss={min_loss}")
@@ -224,4 +227,14 @@ def _coerce_int(value: object) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_fallback_payload(response_data: dict) -> bool:
+    if not isinstance(response_data, dict):
+        return False
+    raw_severity = response_data.get("raw_severity")
+    raw_large_losses = response_data.get("raw_large_losses")
+    severity_fallback = isinstance(raw_severity, dict) and bool(raw_severity.get("fallback"))
+    large_losses_fallback = isinstance(raw_large_losses, dict) and bool(raw_large_losses.get("fallback"))
+    return severity_fallback or large_losses_fallback
 

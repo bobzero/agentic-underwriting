@@ -1,14 +1,52 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import QueuesPanel from "@/components/QueuesPanel";
 import DashboardMetrics from "@/components/DashboardMetrics";
-import { submissionQueue, aiApprovedQueue } from "@/lib/mockData";
 import GlobalCopilotFab from "@/components/GlobalCopilotFab";
+import { fetchCaseQueues } from "@/lib/api";
+import type { CaseQueueItem } from "@/lib/apiTypes";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [submissionQueue, setSubmissionQueue] = useState<CaseQueueItem[]>([]);
+  const [aiApprovedQueue, setAiApprovedQueue] = useState<CaseQueueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadQueues = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchCaseQueues();
+        if (!cancelled) {
+          setSubmissionQueue(data.submissionQueue);
+          setAiApprovedQueue(data.aiApprovedQueue);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Unable to load case queues.";
+          setError(message);
+          setSubmissionQueue([]);
+          setAiApprovedQueue([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadQueues();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-screen">
       {/* Top Nav */}
@@ -24,11 +62,23 @@ export default function DashboardPage() {
       {/* Dashboard grid */}
       <div className="flex-1 overflow-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-4">
+          {error && (
+            <div className="rounded border border-destructive/20 bg-red-50 px-4 py-2 text-destructive">
+              {error}
+            </div>
+          )}
+          {loading && !error && (
+            <div className="rounded border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700">
+              Loading case queues...
+            </div>
+          )}
+          {!loading && !error && (
           <QueuesPanel
             submissionQueue={submissionQueue}
             aiApprovedQueue={aiApprovedQueue}
             onOpenCase={(id) => router.push(`/case/${id}`)}
           />
+          )}
         </Card>
 
         <Card className="p-4">

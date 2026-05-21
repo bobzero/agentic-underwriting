@@ -1,11 +1,11 @@
 "use client";
 import React, { useMemo, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import type { CaseItem } from "@/lib/mockData";
+import type { CaseQueueItem } from "@/lib/apiTypes";
 
 type Props = {
-  submissionQueue: CaseItem[];
-  aiApprovedQueue: CaseItem[];
+  submissionQueue: CaseQueueItem[];
+  aiApprovedQueue: CaseQueueItem[];
   onOpenCase: (id: string) => void;
 };
 
@@ -19,7 +19,8 @@ export default function QueuesPanel({ submissionQueue, aiApprovedQueue, onOpenCa
       if (filter === "Pending" && c.status === "Pending") return true;
       if (filter === "Needs Review" && c.status === "Needs Review") return true;
       if (filter === "High Risk" && c.riskFlags.length > 0) return true;
-      const daysAgo = (now - c.submissionDate.getTime()) / 86400000;
+      const submissionDateMs = new Date(c.submissionDate).getTime();
+      const daysAgo = (now - submissionDateMs) / 86400000;
       if (filter === "Last 3 Days") return daysAgo <= 3;
       if (filter === "Last 7 Days") return daysAgo <= 7;
       if (filter === "Older than 7 Days") return daysAgo > 7;

@@ -6,6 +6,7 @@ compatible with existing knowledge_insight usage.
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -16,13 +17,11 @@ from openai import AzureOpenAI
 
 
 try:
-    from dotenv import load_dotenv
+    from dotenv import dotenv_values, load_dotenv
     load_dotenv()
 except Exception:
+    dotenv_values = None
     pass
-
-FOUNDRY_OPENAI_SCOPE = os.getenv("FOUNDRY_OPENAI_SCOPE", "https://ai.azure.com/.default")
-OPENAI_API_VERSION = os.getenv("OPENAI_API_VERSION")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -37,6 +36,23 @@ if not logger.handlers:
     _handler.setFormatter(_formatter)
     logger.addHandler(_handler)
 logger.propagate = False
+_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+
+
+def _read_env(name: str, default: str | None = None) -> str | None:
+    """Prefer backend .env value, then process env, then default."""
+    if dotenv_values is not None:
+        try:
+            value = dotenv_values(_ENV_PATH).get(name)
+            if value:
+                return value
+        except Exception:
+            pass
+
+    value = os.getenv(name)
+    if value:
+        return value
+    return default
 
 
 class KnowledgeAgentResponse(BaseModel):
@@ -92,15 +108,18 @@ class FoundryKnowledgeAgentClient:
     #         raise
 
     def _get_openai_client(self):
-    # Manual client with explicit token scope to satisfy Foundry audience checks
+        # Manual client with explicit token scope to satisfy Foundry audience checks
+        foundry_openai_scope = _read_env("FOUNDRY_OPENAI_SCOPE", "https://ai.azure.com/.default")
+        openai_api_version = _read_env("OPENAI_API_VERSION")
+
         def token_provider() -> str:
-            return self.credential.get_token(FOUNDRY_OPENAI_SCOPE).token
+            return self.credential.get_token(foundry_openai_scope).token
 
         base_url = self.endpoint.rstrip("/") + "/openai"
         return AzureOpenAI(
             azure_ad_token_provider=token_provider,
             base_url=base_url,
-            api_version=OPENAI_API_VERSION,
+            api_version=openai_api_version,
             # api_version can be pinned if needed, e.g., api_version="2025-05-15-preview"
         )
 

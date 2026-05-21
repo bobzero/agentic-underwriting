@@ -2,11 +2,14 @@ from fastapi import APIRouter
 from app.models.schemas import ChatRequest, CaseContext, CopilotChatResponse
 from app.services.conductor import build_case_view
 from app.services.data_access.local_repo import get_case, list_cases
-from app.services.sk_kernel import get_chat_completion_async
 from app.services.agents.foundry_knowledge_agent import get_knowledge_insight
+from app.services.sk_kernel import get_chat_completion_async
 import json
 import re
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/copilot", tags=["copilot"])
 
@@ -62,8 +65,50 @@ def _small_talk_reply(message: str, *, case_id: str | None = None, portfolio: bo
     return "Hello! Happy to help with any underwriting questions you have."
 
 
+def _build_portfolio_knowledge_answer(message: str, portfolio_cases: list) -> tuple[Optional[str], Optional[list[dict]]]:
+    """Build a knowledge answer for portfolio-level insights using the knowledge agent."""
+    prompt_parts = [
+        "Use the following portfolio context to answer the underwriting question.",
+        f"Question: {message}",
+    ]
+    if portfolio_cases:
+        prompt_parts.append("Portfolio cases:\n" + json.dumps(portfolio_cases, indent=2))
+
+    prompt = "\n\n".join(prompt_parts)
+
+    try:
+        insight = get_knowledge_insight(prompt, case_id=None, top_k=5)
+        if not insight:
+            return None, None
+        return insight.get("answer"), insight.get("citations")
+    except Exception as e:
+        logger.warning(f"Portfolio knowledge agent error: {e}")
+        return None, None
+
+
+async def _build_portfolio_openai_answer(message: str, portfolio_cases: list) -> Optional[str]:
+    """Fallback to Azure OpenAI chat completion when knowledge agent is unavailable."""
+    payload = {
+        "portfolio_cases": portfolio_cases,
+        "question": message,
+    }
+    try:
+        return await get_chat_completion_async([
+            ("system", GLOBAL_SYSTEM_PROMPT),
+            (
+                "user",
+                "Here is the portfolio snapshot:\n"
+                + json.dumps(payload, indent=2)
+                + "\nProvide underwriting insights across the portfolio."
+            ),
+        ])
+    except Exception as e:
+        logger.warning(f"Portfolio OpenAI fallback error: {e}")
+        return None
+
+
 def _build_knowledge_answer(message: str, *, case_id: str | None = None, case_payload: dict | None = None) -> tuple[Optional[str], Optional[list[dict]]]:
-    """Always call the knowledge agent using the user's question plus case context when available."""
+    """Build a knowledge answer for case-level insights using the knowledge agent."""
     prompt_parts = [
         "Use the following context to answer the underwriting question.",
         f"Question: {message}",
@@ -79,9 +124,9 @@ def _build_knowledge_answer(message: str, *, case_id: str | None = None, case_pa
             return None, None
         return insight.get("answer"), insight.get("citations")
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Knowledge agent error: {e}")
+        logger.warning(f"Case knowledge agent error: {e}")
         return None, None
+
 
 
 @router.post("/chat", response_model=CopilotChatResponse)
@@ -114,8 +159,12 @@ async def chat(req: ChatRequest):
             case_payload=case_payload,
         )
 
+        from fastapi import HTTPException
         if not answer:
-            answer = "I wasn't able to retrieve an underwriting answer from the knowledge source just now. Please try again."
+            raise HTTPException(
+                status_code=503, 
+                detail="Copilot chat is temporarily unavailable: Foundry knowledge agent is not configured or accessible. Please verify the Foundry agent credentials and permissions."
+            )
 
         return CopilotChatResponse(
             answer=answer,
@@ -130,20 +179,18 @@ async def chat(req: ChatRequest):
             answer=_small_talk_reply(req.message, portfolio=True)
         )
 
-    # Default portfolio mode
     portfolio_cases = list_cases()
-    payload = {
-        "portfolio_cases": portfolio_cases,
-        "question": req.message,
-    }
+    
+    answer, citations = _build_portfolio_knowledge_answer(req.message, portfolio_cases)
 
-    answer = await get_chat_completion_async([
-        ("system", GLOBAL_SYSTEM_PROMPT),
-        (
-            "user",
-            "Here is the portfolio snapshot:\n" + json.dumps(payload, indent=2) +
-            "\nProvide underwriting insights across the portfolio."
-        ),
-    ])
+    if not answer:
+        answer = await _build_portfolio_openai_answer(req.message, portfolio_cases)
 
-    return CopilotChatResponse(answer=answer)
+    from fastapi import HTTPException
+    if not answer:
+        raise HTTPException(
+            status_code=503, 
+            detail="Portfolio Copilot chat is temporarily unavailable: both Foundry knowledge agent and Azure OpenAI fallback failed."
+        )
+
+    return CopilotChatResponse(answer=answer, knowledgeCitations=citations)

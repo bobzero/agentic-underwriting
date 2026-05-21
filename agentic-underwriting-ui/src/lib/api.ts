@@ -1,10 +1,40 @@
-import { AiAuditLog, AiDecision, CaseViewModel, CopilotChatResponse, FabricPropertySummary, FabricZipClaimStats, FabricRiskAssessment, LocationIntelligenceResponse } from "./apiTypes";
+import { AiAuditLog, AiDecision, CaseQueueResponse, CaseViewModel, CopilotChatResponse, FabricPropertySummary, FabricZipClaimStats, FabricRiskAssessment, LocationIntelligenceResponse } from "./apiTypes";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+function resolveApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+
+  // In production, derive the backend host from the frontend host when no build-time env is provided.
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    return `${protocol}//${hostname.replace("-frontend-", "-backend-")}`;
+  }
+
+  return "http://localhost:8000";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const message = await res.text();
+    const bodyText = await res.text();
+
+    let message = bodyText;
+    try {
+      const parsed = JSON.parse(bodyText) as { detail?: string; message?: string };
+      if (typeof parsed.detail === "string" && parsed.detail.trim().length > 0) {
+        message = parsed.detail;
+      } else if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
+        message = parsed.message;
+      }
+    } catch {
+      // Response body was not JSON; keep raw text.
+    }
+
     throw new Error(message || `Request failed with status ${res.status}`);
   }
   return res.json() as Promise<T>;
@@ -18,6 +48,16 @@ export async function fetchCaseView(caseId: string): Promise<CaseViewModel> {
     cache: "no-store",
   });
   return handleResponse<CaseViewModel>(res);
+}
+
+export async function fetchCaseQueues(): Promise<CaseQueueResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/cases`, {
+    headers: {
+      "Accept": "application/json",
+    },
+    cache: "no-store",
+  });
+  return handleResponse<CaseQueueResponse>(res);
 }
 
 export async function sendCopilotMessage(message: string, caseId?: string): Promise<CopilotChatResponse> {

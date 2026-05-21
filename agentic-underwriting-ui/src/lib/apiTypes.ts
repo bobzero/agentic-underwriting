@@ -210,6 +210,19 @@ export type CaseViewModel = {
   fabricRiskAssessment?: FabricRiskAssessment;
 };
 
+export type CaseQueueItem = {
+  id: string;
+  name: string;
+  status: "Pending" | "Needs Review" | "AI Approved";
+  submissionDate: string;
+  riskFlags: string[];
+};
+
+export type CaseQueueResponse = {
+  submissionQueue: CaseQueueItem[];
+  aiApprovedQueue: CaseQueueItem[];
+};
+
 export type CopilotChatResponse = {
   answer: string;
   suggested_actions?: string[];

@@ -1,6 +1,7 @@
 from typing import Optional
 
 from app.models.schemas import AiDecision, CaseContext, CaseViewModel, KnowledgeInsight
+from app.config import settings
 from app.services.data_access.local_repo import get_case
 from app.services.agents.risk_agent import assess_risk
 from app.services.agents.guideline_agent import check_guidelines
@@ -64,11 +65,14 @@ def build_case_view(ctx: CaseContext) -> CaseViewModel:
     # Use decision from case_doc if available, otherwise generate
     decision = case_doc.get("decision") or decide(risk, guidelines)
     
-    expl = generate_explanation(ctx, case_doc, risk, guidelines)
-    
-    # Use summary and support_bullets from case_doc if available, otherwise from explanation
-    summary = case_doc.get("summary") or expl["summary"]
-    support_bullets = case_doc.get("support_bullets") or expl["bullets"]
+    summary = case_doc.get("summary")
+    support_bullets = case_doc.get("support_bullets")
+
+    # Only invoke the LLM summarizer when no curated summary exists.
+    if not summary or not support_bullets:
+        expl = generate_explanation(ctx, case_doc, risk, guidelines)
+        summary = summary or expl["summary"]
+        support_bullets = support_bullets or expl["bullets"]
     
     tabs = {
         "property_profile": case_doc.get("property", {}),
@@ -84,18 +88,20 @@ def build_case_view(ctx: CaseContext) -> CaseViewModel:
     decision_type = case_doc.get("decisionType", "HUMAN_REVIEW")
     address = case_doc.get("address") or case_doc.get("property", {}).get("address")
     
-    # Generate knowledge insights
+    # Knowledge insights can call external services; keep disabled by default to
+    # avoid blocking case rendering in local/dev environments.
     knowledge_insights = []
-    queries = _generate_knowledge_queries(case_doc, risk)
-    for query in queries:
-        try:
-            insight_data = get_knowledge_insight(query, case_id=ctx.case_id, top_k=3)
-            if insight_data:
-                insight = KnowledgeInsight(**insight_data)
-                knowledge_insights.append(insight)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to generate insight for '{query}': {e}")
+    if settings.enable_knowledge_insights:
+        queries = _generate_knowledge_queries(case_doc, risk)
+        for query in queries:
+            try:
+                insight_data = get_knowledge_insight(query, case_id=ctx.case_id, top_k=3)
+                if insight_data:
+                    insight = KnowledgeInsight(**insight_data)
+                    knowledge_insights.append(insight)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to generate insight for '{query}': {e}")
 
     return CaseViewModel(
         id=ctx.case_id,

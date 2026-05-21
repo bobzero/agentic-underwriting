@@ -34,4 +34,7 @@ class Settings(BaseSettings):
     foundry_openai_scope: str = "https://ai.azure.com/.default"
     openai_api_version: str = "2025-05-15-preview"
 
+    # Feature flags
+    enable_knowledge_insights: bool = False
+
 settings = Settings()
